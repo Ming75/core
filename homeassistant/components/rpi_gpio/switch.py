@@ -5,7 +5,7 @@ import voluptuous as vol
 
 from homeassistant.components import rpi_gpio
 from homeassistant.components.switch import PLATFORM_SCHEMA
-from homeassistant.const import DEVICE_DEFAULT_NAME
+from homeassistant.const import CONF_NAME, DEVICE_DEFAULT_NAME
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import ToggleEntity
 from homeassistant.helpers.reload import setup_reload_service
@@ -19,13 +19,20 @@ CONF_PORTS = "ports"
 CONF_INVERT_LOGIC = "invert_logic"
 
 DEFAULT_INVERT_LOGIC = False
+DEFAULT_PULL_MODE = "UP"
 
-_SWITCHES_SCHEMA = vol.Schema({cv.positive_int: cv.string})
+_SWITCHES_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_NAME): cv.string,
+        vol.Optional(CONF_INVERT_LOGIC, default=DEFAULT_INVERT_LOGIC): cv.boolean,
+    }
+)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
-        vol.Required(CONF_PORTS): _SWITCHES_SCHEMA,
-        vol.Optional(CONF_INVERT_LOGIC, default=DEFAULT_INVERT_LOGIC): cv.boolean,
+        vol.Required(CONF_PORTS, default={}): vol.Schema(
+            {cv.positive_int: _SWITCHES_SCHEMA}
+        )
     }
 )
 
@@ -35,23 +42,23 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
 
     setup_reload_service(hass, DOMAIN, PLATFORMS)
 
-    invert_logic = config.get(CONF_INVERT_LOGIC)
-
     switches = []
     ports = config.get(CONF_PORTS)
-    for port, name in ports.items():
-        switches.append(RPiGPIOSwitch(name, port, invert_logic))
+
+    for port, params in ports.items():
+        switches.append(RPiGPIOSwitch(port, params))
     add_entities(switches)
 
 
 class RPiGPIOSwitch(ToggleEntity):
     """Representation of a  Raspberry Pi GPIO."""
 
-    def __init__(self, name, port, invert_logic):
-        """Initialize the pin."""
-        self._name = name or DEVICE_DEFAULT_NAME
+    def __init__(self, port, params):
+        """Initialize the RPi binary sensor."""
         self._port = port
-        self._invert_logic = invert_logic
+        self._name = params[CONF_NAME] or DEVICE_DEFAULT_NAME
+        self._invert_logic = params[CONF_INVERT_LOGIC] or DEFAULT_INVERT_LOGIC
+
         self._state = False
         rpi_gpio.setup_output(self._port)
         rpi_gpio.write_output(self._port, 1 if self._invert_logic else 0)
